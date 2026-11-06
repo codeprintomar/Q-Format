@@ -1,123 +1,144 @@
-# qformat-pdf-service
+# QFormat — Question Formatter & PDF Maker
 
-The service that powers QFormat's **High Quality PDF** export option. It
-receives the current document as an HTML snapshot and renders it to a real
-PDF using headless Chromium (Puppeteer) — so the text is actual
-selectable/searchable PDF text and borders/decorations stay vector-sharp at
-any zoom, instead of the pixelated JPEG-in-a-PDF you get from the old
-html2canvas pipeline.
+**Transform plain text into beautifully formatted study sheets and professional PDFs.**
 
-QFormat's **Quick PDF** option still works with zero setup — it doesn't
-need this service at all.
+QFormat is a browser-based tool designed to turn simple questions, answers, and study notes into professionally formatted revision sheets and exam papers.
 
-This service is now meant to be **deployed once, publicly**, so every
-QFormat user gets High Quality PDF automatically with no local install.
-(Local `npm start` still works too, for development.)
+Simply paste your content, customize its appearance, preview the result in real time, and export it as a PDF.
 
-## Deploy it (one time, by whoever maintains QFormat)
+## ✨ Features
 
-This repo includes a `Dockerfile`, so it deploys as-is to any host that
-runs Docker containers. Render is the easiest option:
+### 📝 Smart Text Formatting
+- Convert plain text into structured documents.
+- Automatically recognize numbered questions.
+- Support multiple-choice questions and answers.
+- Organize content into sections.
+- Highlight notes, key terms, and important facts.
+- Support reading passages with source citations.
+- Support essay questions with customizable answer lines.
 
-1. Push this `qformat-pdf-service` folder to a GitHub repo (or a
-   subfolder of your QFormat repo).
-2. In [Render](https://render.com): **New → Blueprint**, point it at the
-   repo (it will pick up `render.yaml`), or **New → Web Service** and
-   choose "Docker" as the environment manually.
-3. Set the `ALLOWED_ORIGINS` environment variable to your deployed
-   QFormat URL(s), e.g. `https://qformat.example.com`.
-4. Deploy. Render gives you a public URL like
-   `https://qformat-pdf-service.onrender.com`.
-5. In the QFormat frontend, point `PDF_SERVICE_URL` at
-   `https://qformat-pdf-service.onrender.com/export-pdf` (see the main
-   project README — it's one constant near the top of the export script).
+### 🌍 Arabic & English Support
+- Full Arabic and English content support.
+- Automatic text direction detection (RTL / LTR).
+- Arabic question formats and answer keywords.
+- Support Arabic and English numbering styles.
 
-Any other Docker-friendly host works the same way (Railway, Fly.io, Google
-Cloud Run, a plain VPS with `docker run`, ...). There's nothing
-Render-specific about the image itself.
+### 🎨 Document Customization
+- 6 built-in color themes.
+- 6 document layout styles.
+- Custom title, question, answer, and note colors.
+- Multiple font options.
+- Adjustable font sizes and spacing.
+- Custom page margins.
+- Decorative page borders and frames.
+
+### 📄 Page Settings
+- A4, Letter, and A5 paper sizes.
+- Portrait and Landscape orientations.
+- Automatic multi-page document layout.
+- Live document preview.
+
+### 📚 Revision & Exam Modes
+- **Revision Mode:** Display answers directly below their questions.
+- **Exam Mode:** Move answers into a separate Answer Key and generate dotted answer lines for essay questions.
+
+### 📥 PDF Export
+- **Quick PDF:** Fast, image-based PDF export.
+- **High Quality PDF:** Sharp, selectable, and searchable text using a local PDF rendering service.
+
+### 💾 Project Management
+- Save and load projects.
+- Rename documents.
+- Delete saved projects.
+- Automatically save changes.
+- Store project settings and formatting preferences locally.
+
+## 🛠️ Built With
+
+- HTML5
+- CSS3
+- JavaScript
+- html2canvas
+- jsPDF
+- Google Fonts
+- Headless Chromium (High Quality PDF service)
+
+## 🚀 Getting Started
+
+### 1. Clone the Repository
 
 ```bash
-# Generic manual deploy, e.g. on a VPS:
-docker build -t qformat-pdf-service .
-docker run -d -p 5174:5174 \
-  -e ALLOWED_ORIGINS=https://qformat.example.com \
-  --name qformat-pdf-service \
-  qformat-pdf-service
+git clone YOUR_REPOSITORY_URL
 ```
 
-### Why a container instead of a serverless function?
+### 2. Open the Project
 
-Puppeteer needs a full Chromium binary plus its shared-library
-dependencies, keeps a warm browser instance between requests for speed,
-and print-to-PDF renders can run several seconds — that combination fits
-a small always-on container (Render/Railway/Fly free-to-cheap tiers all
-work fine) much better than a size-constrained, cold-starting serverless
-function. The `Dockerfile` here installs Chromium via `apt-get` (not
-Puppeteer's own downloader) specifically so the image builds reliably in
-CI/on any host.
+Open the project folder and launch:
 
-### Environment variables
+```text
+index.html
+```
 
-| Variable | Required | Purpose |
-|---|---|---|
-| `PORT` | no | Port to listen on. Most hosts set this for you. Defaults to `5174`. |
-| `ALLOWED_ORIGINS` | recommended in prod | Comma-separated list of frontend origins allowed to call `/export-pdf`. Unset = allow any origin. |
-| `REQUEST_TIMEOUT_MS` | no | Per-export timeout. Defaults to `60000`. |
-| `PUPPETEER_EXECUTABLE_PATH` | set by Dockerfile | Path to system Chromium. Don't set manually unless running outside Docker. |
+You can use QFormat directly in your browser.
 
-See `.env.example`.
+### 3. High Quality PDF Export (Optional)
 
-## Local development
+High Quality PDF export requires the separate local PDF service.
 
-Requires [Node.js](https://nodejs.org) 18+.
+Navigate to the `qformat-pdf-service` directory and run:
 
 ```bash
-cd qformat-pdf-service
 npm install
 npm start
 ```
 
-The first `npm install` downloads Puppeteer's bundled Chromium (~200MB;
-needs internet, one-time). You should see:
+The service runs locally and handles PDF rendering through headless Chromium.
 
-```
-QFormat PDF service listening on http://localhost:5174
-Export endpoint: POST /export-pdf
-```
+## 📖 Supported Text Format
 
-Point the frontend's `PDF_SERVICE_URL` at `http://localhost:5174/export-pdf`
-while developing.
+QFormat uses a simple text-based syntax.
 
-## How it works
+| Syntax | Purpose |
+|---|---|
+| `# Title` | Document title |
+| `## Section` | Section heading |
+| `1. Question` | Numbered question |
+| `A) Option` | Multiple-choice option |
+| `Answer: text` | Question answer |
+| `Note: text` | Highlighted note |
+| `Key Term: text` | Important term |
+| `Key Fact: text` | Important fact |
+| `Passage: text` | Reading passage |
+| `Source: name` | Passage source |
 
-1. QFormat clones the live document `<html>` (current theme, layout,
-   decoration, colors, fonts — everything already applied as inline CSS
-   custom properties) into a standalone HTML string and `POST`s it here
-   along with the target page width/height and a filename.
-2. This service opens the HTML in headless Chromium and calls Chromium's
-   native print-to-PDF (`page.pdf()`), which renders using the page's
-   existing `@media print` rules — the same rules QFormat already uses to
-   isolate `#printArea` and force one page per `.paper` element.
-3. The resulting PDF buffer is streamed back and downloaded by the browser.
+Arabic equivalents are also supported.
 
-No parsing, layout, or pagination logic lives in this service — it's a
-thin wrapper around Chromium's own PDF renderer, so the output always
-matches whatever QFormat's preview is currently showing.
+## 🎯 Who Is It For?
 
-## Troubleshooting
+- Students preparing revision sheets.
+- Teachers creating exam papers.
+- Educators organizing questions and answers.
+- Anyone who wants to turn plain text into structured study documents.
 
-- **"Could not reach the PDF service..."** — check `PDF_SERVICE_URL` in
-  the frontend matches your deployed service's `/export-pdf` URL, and that
-  the service is actually up (`GET /health` should return `{"ok":true}`).
-- **CORS error in the browser console** — add your frontend's exact origin
-  (scheme + host, no trailing slash) to `ALLOWED_ORIGINS` on the deployed
-  service and redeploy/restart it.
-- **Slow first export after idle** — free tiers on some hosts (e.g. Render
-  free plan) spin containers down when idle; the first request after a
-  while pays a cold-start cost. Upgrading to an always-on plan avoids this.
-- **Puppeteer download fails during local `npm install`** — some corporate
-  networks block the Chromium download. See Puppeteer's docs on using an
-  existing Chrome install (`PUPPETEER_EXECUTABLE_PATH`) as a workaround.
-- **Fonts look slightly off** — the service waits for `document.fonts.ready`
-  before rendering, but it still needs internet access to fetch the same
-  Google Fonts QFormat's preview uses.
+## 🔮 Future Improvements
+
+- More document templates.
+- Additional customization options.
+- Enhanced PDF export capabilities.
+- More question formatting options.
+
+## 👨‍💻 Developer
+
+**Developed by CodePrint**
+
+- GitHub: [@codeprintomar](https://github.com/codeprintomar)
+- Website: [CodePrint](https://code-print.wasmer.app/)
+- Projects: [Explore CodePrint](https://code-print.wasmer.app/projects.html)
+
+---
+
+<p align="center">
+  **QFormat** — Make your study materials look better.
+  <br>
+  Made with ❤️ by CodePrint
+</p>
