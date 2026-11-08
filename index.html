@@ -169,6 +169,7 @@
   .pagination-unit{display:block;width:100%;break-inside:avoid;page-break-inside:avoid;}
   .pagination-unit > .doc-block{break-inside:avoid;page-break-inside:avoid;}
 
+  .doc-title,.doc-section,.doc-question,.doc-answer,.doc-choices,.doc-note,.doc-keyterm,.doc-keyfact,.doc-text,.doc-answer-item{direction:auto;unicode-bidi:plaintext;}
   .doc-title{color:var(--doc-title-color);font-size:var(--doc-title-size);font-weight:700;text-align:center;margin:0 0 22px 0;}
   .doc-section{color:var(--doc-section-color);font-weight:700;font-size:calc(var(--doc-question-size) + 2px);margin:26px 0 12px 0;padding-bottom:6px;border-bottom:2px solid var(--doc-section-color);break-inside:avoid;page-break-inside:avoid;break-after:avoid;page-break-after:avoid;}
   .doc-block{margin-bottom:var(--doc-gap);break-inside:avoid;page-break-inside:avoid;-webkit-column-break-inside:avoid;}
@@ -331,7 +332,8 @@
   </div>
   <button class="btn" id="newBtn">New</button>
   <button class="btn" id="saveBtn">Save</button>
-  <button class="btn primary" id="pdfBtn">Download PDF</button>
+  <button class="btn" id="printBtn" title="Print or save a selectable, searchable PDF">Print / Searchable PDF</button>
+  <button class="btn primary" id="pdfBtn">High-quality PDF</button>
   <input type="file" id="importFile" accept=".docx,.pdf,.txt" style="display:none" multiple>
   <button class="btn" id="importBtn" title="استيراد أسئلة من ملف Word أو PDF أو نص">📥 استيراد ملف</button>
   <button class="btn" id="versionsBtn" title="إنشاء إصدارات متعددة من الامتحان">🎯 إصدارات متعددة</button>
@@ -462,7 +464,8 @@
       <div class="field-row"><span>الاسم</span><input type="text" id="qbName" placeholder="اسم السؤال"></div>
       <button class="btn small" id="qbSaveBtn">حفظ السؤال الحالي في البنك</button>
       <div class="field-row" style="margin-top:8px;"><span>اختيار من البنك</span><select id="qbList"></select></div>
-      <button class="btn small" id="qbInsertBtn">إدراج السؤال المختار</button>
+      <button class="btn small" id="qbInsertBtn">إدراج المحتوى المختار</button>
+      <button class="btn small" id="qbDeleteBtn">حذف العنصر المختار</button>
       <button class="btn small" id="qbLoadBtn">تحميل البنك (كل الأسئلة)</button>
       <p class="help-note">يُحفظ البنك في متصفحك ويُمكن إعادة استخدام الأسئلة في أي امتحان.</p>
     </div>
@@ -726,61 +729,41 @@ const modeExam=document.getElementById('modeExam');
 modeRevision.addEventListener('click',()=>{document.body.classList.remove('exam-mode');modeRevision.classList.add('active');modeExam.classList.remove('active');renderNow();scheduleAutosave();});
 modeExam.addEventListener('click',()=>{document.body.classList.add('exam-mode');modeExam.classList.add('active');modeRevision.classList.remove('active');renderNow();scheduleAutosave();});
 
+function normalizeDigits(value){
+  return String(value??'').replace(/[٠-٩۰-۹]/g,ch=>{const n=ch.charCodeAt(0);return String(n>=0x06F0&&n<=0x06F9?n-0x06F0:n-0x0660);});
+}
+function normalizeChoiceLetter(value){
+  const ch=String(value||'').trim().toUpperCase();
+  return ({'أ':'A','ا':'A','إ':'A','آ':'A','ب':'B','ج':'C','د':'D','ه':'E','ة':'E','هـ':'E'})[ch]||ch;
+}
 function parseContent(text){
-  const lines=text.split('\n');
-  const blocks=[];
-  let current=null;
-  const push=(block)=>{blocks.push(block);current=block;};
-
-  for(let raw of lines){
-    const line=raw.trim();
-    if(line===''){current=null;continue;}
-    let m;
+  const lines=normalizeDigits(text).split(/\r?\n/),blocks=[];let current=null;
+  const push=b=>{blocks.push(b);current=b;};
+  for(const raw of lines){
+    const line=raw.trim();if(!line){current=null;continue;}let m;
     if((m=line.match(/^#\s+(.*)/))){push({type:'title',text:m[1]});continue;}
     if((m=line.match(/^##\s+(.*)/))){push({type:'section',text:m[1]});continue;}
-    if((m=line.match(/^answer\b\s*:?\s*(.*)/i))){push({type:'answer',text:m[1]});continue;}
-    if((m=line.match(/^note\b\s*:?\s*(.*)/i))){push({type:'note',text:m[1]});continue;}
+    if((m=line.match(/^(?:answer|الإجابة\s*الصحيحة|الإجابة|الاجابة\s*الصحيحة|الاجابة)\s*:?\s*(.*)$/i))){push({type:'answer',text:m[1]});continue;}
+    if((m=line.match(/^(?:note|ملاحظة)\s*:?\s*(.*)$/i))){push({type:'note',text:m[1]});continue;}
     if((m=line.match(/^key\s+term\b\s*[:\-—]?\s*(.*)/i))){push({type:'keyterm',text:m[1]});continue;}
     if((m=line.match(/^key\s+fact\b\s*:?\s*(.*)/i))){push({type:'keyfact',text:m[1]});continue;}
-    if((m=line.match(/^\d+[\.\)]\s*(.*)/))){push({type:'question',text:m[1],choices:[]});continue;}
-    if(current&&current.type==='question'&&(m=line.match(/^([A-Ea-e\u0623\u0628\u062c\u062f\u0647])[\.\)]\s*(.*)/))){
-      current.choices=current.choices||[];
-      current.choices.push({letter:m[1].toUpperCase(),text:m[2]});
-      continue;
+    if((m=line.match(/^(\d+)[\.\)]\s*(.*)/))){push({type:'question',text:m[2],choices:[]});continue;}
+    if(current&&current.type==='question'&&(m=line.match(/^([A-Ea-eأإآابتثجحخدذرزسشصضطظعغفقكلمنهوي])\s*[\.\)]\s*(.*)/))){
+      current.choices.push({letter:normalizeChoiceLetter(m[1]),text:m[2]});continue;
     }
-    if(current&&['question','answer','note','keyterm','keyfact'].includes(current.type)){
-      current.text+=' '+line;
-    }else if(blocks.length===0){
-      push({type:'title',text:line});
-    }else{
-      push({type:'text',text:line});
-    }
+    if(current&&['question','answer','note','keyterm','keyfact'].includes(current.type))current.text+=' '+line;
+    else if(!blocks.length)push({type:'title',text:line});
+    else push({type:'text',text:line});
   }
-
-  let qn=1;
-  blocks.forEach(b=>{
-    if(b.type!=='question')return;
-    b.num=qn++;
-    if(!b.choices||!b.choices.length){
-      const split=splitInlineChoices(b.text);
-      if(split){b.text=split.stem;b.choices=split.choices;}
-    }
-  });
+  let qn=1;blocks.forEach(b=>{if(b.type!=='question')return;b.num=qn++;if(!b.choices.length){const split=splitInlineChoices(b.text);if(split){b.text=split.stem;b.choices=split.choices;}}});
   return blocks;
 }
-
 function splitInlineChoices(text){
-  const re=/\s([A-Ea-e])[\.\)]\s+/g;
-  const hits=[];
-  let m;
-  while((m=re.exec(text))){hits.push({index:m.index,end:re.lastIndex,letter:m[1].toUpperCase()});}
+  const re=/\s([A-Ea-eأإآابتثجحخدذرزسشصضطظعغفقكلمنهوي])\s*[\.\)]\s+/g,hits=[];let m;
+  while((m=re.exec(text)))hits.push({index:m.index,end:re.lastIndex,letter:normalizeChoiceLetter(m[1])});
   if(hits.length<2)return null;
-  const expected='ABCDE'.slice(0,hits.length).split('');
-  const sequential=hits.every((h,i)=>h.letter===expected[i]);
-  if(!sequential)return null;
-  const stem=text.slice(0,hits[0].index).trim();
-  const choices=hits.map((h,i)=>{const end=i+1<hits.length?hits[i+1].index:text.length;return{letter:h.letter,text:text.slice(h.end,end).trim()};});
-  return{stem,choices};
+  const expected='ABCDE'.slice(0,hits.length).split('');if(!hits.every((h,i)=>h.letter===expected[i]))return null;
+  return{stem:text.slice(0,hits[0].index).trim(),choices:hits.map((h,i)=>({letter:h.letter,text:text.slice(h.end,i+1<hits.length?hits[i+1].index:text.length).trim()}))};
 }
 
 function escapeHtml(s){
@@ -968,8 +951,11 @@ Numbered question — "1)" also works
 A) Option one
 MCQ options, one per line under a question — or typed inline as "A) ... B) ... C) ..."
 
-Answer: text
+Answer: text (or الإجابة: text)
 Shown inline (Revision) or moved to Answer Key (Exam)
+
+أ) اختيار عربي
+Arabic or English option labels are supported.
 
 Note: text
 Highlighted side note
@@ -999,64 +985,31 @@ document.getElementById('copyExampleBtn').addEventListener('click',async()=>{
 });
 
 const pdfBtn=document.getElementById('pdfBtn');
-pdfBtn.addEventListener('click',async()=>{
-
-  render(parseContent(source.value));
-  updateStats();
-
+async function exportPdf(contentOverride=null,filenameOverride=null){
+  render(parseContent(contentOverride==null?source.value:contentOverride));updateStats();
   const pages=Array.from(document.querySelectorAll('#pages .paper'));
-  if(!pages.length){alert('There is no content to export.');return;}
-
-  const[w,h]=document.getElementById('fPaper').value.split(',').map(Number);
-  const orientation=document.getElementById('fOrient').value;
-  const pageWidth=orientation==='portrait'?w:h;
-  const pageHeight=orientation==='portrait'?h:w;
-
-  const rawName=(projectNameInput.value||'document').trim().replace(/[\\/:*?"<>|]+/g,'-');
-  const filename=`${rawName||'document'}.pdf`;
-
+  if(!pages.length){alert('There is no content to export.');return false;}
+  const[w,h]=document.getElementById('fPaper').value.split(',').map(Number),orientation=document.getElementById('fOrient').value;
+  const pageWidth=orientation==='portrait'?w:h,pageHeight=orientation==='portrait'?h:w;
+  const rawName=(filenameOverride||(projectNameInput.value||'document')).trim().replace(/[\\/:*?"<>|]+/g,'-');
   const jsPDF=window.jspdf&&window.jspdf.jsPDF;
-  if(!jsPDF){alert('jsPDF could not be loaded. Please reload the page and try again.');return;}
-
-  const pdf=new jsPDF({orientation,unit:'mm',format:[pageWidth,pageHeight],compress:true});
-
-  const originalText=pdfBtn.textContent;
+  if(!jsPDF){alert('jsPDF could not be loaded. Please reload the page and try again.');return false;}
+  const pdf=new jsPDF({orientation,unit:'mm',format:[pageWidth,pageHeight],compress:true}),originalText=pdfBtn.textContent;
   pdfBtn.disabled=true;
-
   try{
     for(let i=0;i<pages.length;i++){
-      const paper=pages[i];
-      pdfBtn.textContent=`Generating page ${i+1}/${pages.length}\u2026`;
-
+      pdfBtn.textContent=`Generating page ${i+1}/${pages.length}…`;
       await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
-
-      const canvas=await html2canvas(paper,{
-        scale:2,
-        useCORS:true,
-        allowTaint:true,
-        backgroundColor:'#ffffff',
-        width:paper.scrollWidth,
-        height:paper.scrollHeight,
-        windowWidth:Math.max(document.documentElement.clientWidth,paper.scrollWidth),
-        windowHeight:Math.max(document.documentElement.clientHeight,paper.scrollHeight)
-      });
-
-      const image=canvas.toDataURL('image/jpeg',0.98);
-
-      if(i>0) pdf.addPage([pageWidth,pageHeight],orientation);
-
-      pdf.addImage(image,'JPEG',0,0,pageWidth,pageHeight,undefined,'FAST');
+      const paper=pages[i],canvas=await html2canvas(paper,{scale:2,useCORS:true,allowTaint:true,backgroundColor:'#ffffff',width:paper.scrollWidth,height:paper.scrollHeight,windowWidth:Math.max(document.documentElement.clientWidth,paper.scrollWidth),windowHeight:Math.max(document.documentElement.clientHeight,paper.scrollHeight)});
+      if(i>0)pdf.addPage([pageWidth,pageHeight],orientation);
+      pdf.addImage(canvas.toDataURL('image/jpeg',0.98),'JPEG',0,0,pageWidth,pageHeight,undefined,'FAST');
     }
-
-    pdf.save(filename);
-  }catch(error){
-    console.error('PDF generation failed:',error);
-    alert('PDF generation failed. Check the browser console for details.');
-  }finally{
-    pdfBtn.disabled=false;
-    pdfBtn.textContent=originalText;
-  }
-});
+    pdf.save(`${rawName||'document'}.pdf`);return true;
+  }catch(error){console.error('PDF generation failed:',error);alert('PDF generation failed. Check the browser console for details.');return false;}
+  finally{pdfBtn.disabled=false;pdfBtn.textContent=originalText;}
+}
+pdfBtn.addEventListener('click',()=>exportPdf());
+document.getElementById('printBtn').addEventListener('click',()=>{renderNow();window.print();});
 
 const projectNameInput=document.getElementById('projectName');
 const projectSelect=document.getElementById('projectSelect');
@@ -1219,12 +1172,11 @@ importFile.addEventListener('change', async ()=>{
   if(!files.length)return;
   let added='';
   for(const file of files){
-    const buf = await readFileBuffer(file);
-    let text='';
-    const lower = file.name.toLowerCase();
-    if(lower.endsWith('.docx')) text = await extractDocx(buf);
-    else if(lower.endsWith('.pdf')) text = await extractPdf(buf);
-    else text = new TextDecoder().decode(buf);
+    const lower=file.name.toLowerCase();
+    if(!/\.(docx|pdf|txt)$/.test(lower)){alert('نوع الملف غير مدعوم: '+file.name);continue;}
+    let buf,text='';
+    try{buf=await readFileBuffer(file);if(lower.endsWith('.docx'))text=await extractDocx(buf);else if(lower.endsWith('.pdf'))text=await extractPdf(buf);else text=new TextDecoder().decode(buf);}
+    catch(error){console.error('Import failed:',error);alert('تعذر استخراج النص من '+file.name+'. قد يكون PDF ممسوحاً ضوئياً أو محمياً.');continue;}
     added += (added?'\n\n':'') + text;
   }
   source.value = (source.value? source.value+'\n\n':'') + added;
@@ -1235,15 +1187,16 @@ importBtn.addEventListener('click',()=>importFile.click());
 
 /* ---------- Question Bank (حفظ وإعادة استخدام الأسئلة) ---------- */
 const BANK_NS = 'bank:';
-function bankKeys(){ return backendKeys().filter(k=>k.startsWith(BANK_NS)); }
-function bankGet(id){ return backendGet(BANK_NS+id); }
-function bankSet(id,val){ backendSet(BANK_NS+id,val); }
+function bankKeys(){ return backendKeys().filter(k=>k.startsWith(NS+BANK_NS)).map(k=>k.slice((NS+BANK_NS).length)); }
+function bankGet(id){ return backendGet(NS+BANK_NS+id); }
+function bankSet(id,val){ backendSet(NS+BANK_NS+id,val); }
 
 const qbName = document.getElementById('qbName');
 const qbList = document.getElementById('qbList');
 const qbSaveBtn = document.getElementById('qbSaveBtn');
 const qbInsertBtn = document.getElementById('qbInsertBtn');
 const qbLoadBtn = document.getElementById('qbLoadBtn');
+const qbDeleteBtn = document.getElementById('qbDeleteBtn');
 
 function refreshBankList(){
   qbList.innerHTML='<option value="">— اختر سؤالاً من البنك —</option>';
@@ -1275,6 +1228,11 @@ qbInsertBtn.addEventListener('click',()=>{
   }catch(e){}
 });
 
+qbDeleteBtn.addEventListener('click',()=>{
+  const id=qbList.value;if(!id)return alert('اختر عنصراً من البنك أولاً.');
+  if(!confirm('حذف العنصر المحدد من بنك الأسئلة؟'))return;
+  backendDelete(NS+BANK_NS+id);refreshBankList();
+});
 qbLoadBtn.addEventListener('click',()=>{
   let all='';
   for(const id of bankKeys()){
@@ -1377,30 +1335,51 @@ veAddBtn.addEventListener('click',()=>{
 });
 
 /* ---------- Multiple Exam Versions (إنشاء إصدارات متعددة) ---------- */
-const versionsBtn = document.getElementById('versionsBtn');
-versionsBtn.addEventListener('click', async ()=>{
-  const blocks = parseContent(source.value);
-  const questions = blocks.filter(b=>b.type==='question');
-  if(!questions.length){return alert('لا توجد أسئلة لإنشاء إصدارات منها.');}
-  const count = parseInt(prompt('عدد الإصدارات المطلوبة؟','3'),10)||1;
-  for(let v=1; v<=count; v++){
-    const shuffled = [...questions].sort(()=>Math.random()-0.5);
-    let txt = '# نسخة الامتحان ' + v + '\n\n';
-    shuffled.forEach((q,i)=>{
-      txt += (i+1) + '. ' + q.text + '\n';
-      if(q.choices&&q.choices.length){
-        const ch=[...q.choices].sort(()=>Math.random()-0.5);
-        ch.forEach(c=>{ txt += c.letter + ') ' + c.text + '\n'; });
-      }
-      txt += '\n';
-    });
-    source.value = txt;
-    renderNow();
-    await new Promise(r=>setTimeout(r,700));
-    document.getElementById('pdfBtn').click();
-    await new Promise(r=>setTimeout(r,900));
+function shuffleArray(items){const out=[...items];for(let i=out.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[out[i],out[j]]=[out[j],out[i]];}return out;}
+function collectQuestionRecords(blocks){
+  const records=[];let current=null;
+  for(const b of blocks){if(b.type==='question'){current={text:b.text,choices:(b.choices||[]).map(c=>({...c})),answer:''};records.push(current);}else if(b.type==='answer'&&current)current.answer=b.text||'';}
+  return records;
+}
+function findCorrectChoiceIndex(answer,choices){
+  const raw=String(answer||'').trim();if(!raw)return -1;
+  const normalized=normalizeChoiceLetter(raw.replace(/[.،,؛;:]+$/,''));
+  const byLetter=choices.findIndex(c=>normalizeChoiceLetter(c.letter)===normalized);
+  if(byLetter>=0&&/^[A-E]$/i.test(normalized))return byLetter;
+  const clean=raw.replace(/^(?:الإجابة الصحيحة|الإجابة|الاجابة)\s*:?\s*/i,'').trim();
+  return choices.findIndex(c=>c.text.trim()===clean);
+}
+function buildVersionText(records,versionNumber){
+  const out=[`# نسخة الامتحان ${versionNumber}`,''];
+  records.forEach((q,index)=>{
+    out.push(`${index+1}. ${q.text}`);
+    if(q.choices.length){
+      const correct=findCorrectChoiceIndex(q.answer,q.choices);
+      const shuffled=shuffleArray(q.choices.map((choice,originalIndex)=>({choice,originalIndex})));
+      let answerLetter='';
+      shuffled.forEach((item,i)=>{const letter=String.fromCharCode(65+i);out.push(`${letter}) ${item.choice.text}`);if(item.originalIndex===correct)answerLetter=letter;});
+      if(answerLetter)out.push(`Answer: ${answerLetter}`);else if(q.answer)out.push(`Answer: ${q.answer}`);
+    }else if(q.answer)out.push(`Answer: ${q.answer}`);
+    out.push('');
+  });
+  return out.join('\n');
+}
+versionsBtn.addEventListener('click',async()=>{
+  const records=collectQuestionRecords(parseContent(source.value));
+  if(!records.length)return alert('لا توجد أسئلة لإنشاء إصدارات منها.');
+  const raw=prompt('عدد الإصدارات المطلوبة؟ (1–10)','3');if(raw===null)return;
+  const count=Math.max(1,Math.min(10,parseInt(raw,10)||1)),originalMode=document.body.classList.contains('exam-mode'),originalText=versionsBtn.textContent;
+  document.body.classList.add('exam-mode');modeExam.classList.add('active');modeRevision.classList.remove('active');versionsBtn.disabled=true;
+  try{
+    for(let v=1;v<=count;v++){
+      versionsBtn.textContent=`تجهيز النسخة ${v}/${count}…`;
+      const base=(projectNameInput.value.trim()||'QFormat-Exam').replace(/[\\/:*?"<>|]+/g,'-');
+      if(!await exportPdf(buildVersionText(records,v),`${base}-Version-${v}`))break;
+    }
+  }finally{
+    document.body.classList.toggle('exam-mode',originalMode);modeExam.classList.toggle('active',originalMode);modeRevision.classList.toggle('active',!originalMode);
+    versionsBtn.disabled=false;versionsBtn.textContent=originalText;renderNow();
   }
-  alert('تم إنشاء وتحميل ' + count + ' إصدار.');
 });
 
 /* ---------- Wire extensions into boot ---------- */
